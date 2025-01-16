@@ -1,0 +1,19 @@
+{
+  "name": "super-simple-vite-dev-server",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "connect": "^3.7.0",
+    "es-module-lexer": "^1.6.0",
+    "esbuild": "^0.24.2",
+    "magic-string": "^0.30.17",
+    "vue": "^3.5.13"
+  }
+}
