@@ -5,7 +5,12 @@ const connect = require("connect");
 const MagicString = require("magic-string");
 const { init, parse: parseEsModule } = require("es-module-lexer");
 const { buildSync } = require("esbuild");
-const { parse: parseVue, compileScript, compileTemplate, rewriteDefault } = require("@vue/compiler-sfc");
+const {
+  parse: parseVue,
+  compileScript,
+  compileTemplate,
+  rewriteDefault,
+} = require("@vue/compiler-sfc");
 
 const app = connect();
 
@@ -25,7 +30,6 @@ const getQuery = (url, key) => {
   return queryObj[key];
 };
 
-// Add missing parseBareImport function
 async function parseBareImport(code) {
   // https://github.com/guybedford/es-module-lexer
   await init;
@@ -39,7 +43,7 @@ async function parseBareImport(code) {
       s.overwrite(item.s, item.e, `/@module/${item.n}`);
     }
   });
-  
+
   return s.toString();
 }
 
@@ -63,7 +67,10 @@ app.use(async function (req, res) {
     // script.jsx
     // script.js.php
     if (/\.js\??[^.]*$/.test(req.url)) {
-      let js = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
+      let js = fs.readFileSync(
+        path.join(__dirname, removeQuery(req.url)),
+        "utf-8"
+      );
       await init;
       let parseResult = parseEsModule(js);
       let s = new MagicString(js);
@@ -105,7 +112,10 @@ app.use(async function (req, res) {
     }
 
     if (/\.vue\??[^.]*$/.test(req.url)) {
-      let vue = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
+      let vue = fs.readFileSync(
+        path.join(__dirname, removeQuery(req.url)),
+        "utf-8"
+      );
       let { descriptor } = parseVue(vue);
 
       let code = "";
@@ -115,7 +125,7 @@ app.use(async function (req, res) {
           source: descriptor.template.content,
           id: path.basename(removeQuery(req.url)),
         }).code;
-        
+
         code = await parseBareImport(code);
         res.setHeader("Content-Type", "application/javascript");
         res.statusCode = 200;
@@ -126,12 +136,12 @@ app.use(async function (req, res) {
       let script = compileScript(descriptor, {
         id: path.basename(removeQuery(req.url)),
       });
-      
+
       if (script) {
         const bareJs = await parseBareImport(script.content);
         code += rewriteDefault(bareJs, "__script");
       }
-      
+
       if (descriptor.template) {
         let templateRequest = removeQuery(req.url) + `?type=template`;
         code += `\nimport { render as __render } from ${JSON.stringify(
@@ -139,14 +149,14 @@ app.use(async function (req, res) {
         )}`;
         code += `\n__script.render = __render`;
       }
-      
+
       if (descriptor.styles) {
         descriptor.styles.forEach((s, i) => {
           const styleRequest = removeQuery(req.url) + `?type=style&index=${i}`;
           code += `\nimport ${JSON.stringify(styleRequest)}`;
         });
       }
-      
+
       code += `\nexport default __script`;
 
       res.setHeader("Content-Type", "application/javascript");
@@ -157,9 +167,8 @@ app.use(async function (req, res) {
 
     res.statusCode = 404;
     res.end("Not found");
-
   } catch (error) {
-    console.error('Error:', error);
+    console.error("Error:", error);
     res.statusCode = 500;
     res.end(error.message);
   }
