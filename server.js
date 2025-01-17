@@ -1,33 +1,39 @@
-const http = require("node:http");
-const path = require("node:path");
-const fs = require("node:fs");
-const connect = require("connect");
-const MagicString = require("magic-string");
-const { init, parse: parseEsModule } = require("es-module-lexer");
-const { buildSync } = require("esbuild");
-const {
-  parse: parseVue,
+import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url'
+import connect from 'connect';
+import MagicString from 'magic-string';
+import { init, parse as parseEsModule } from 'es-module-lexer';
+import { buildSync } from 'esbuild';
+import {
+  parse as parseVue,
   compileScript,
   compileTemplate,
   rewriteDefault,
-} = require("@vue/compiler-sfc");
+} from '@vue/compiler-sfc';
 
 const app = connect();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const removeQuery = (url) => {
   return url.split("?")[0];
 };
 
 const getQuery = (url, key) => {
-  const query = url.split("?")[1];
-  const queryObj = {};
-  if (query) {
-    query.split("&").forEach((item) => {
-      const [key, value] = item.split("=");
-      queryObj[key] = value;
-    });
-  }
-  return queryObj[key];
+  const searchParams = url.includes('?') 
+    ? new URLSearchParams(url.split('?')[1])
+    : new URLSearchParams('');
+  return searchParams.get(key);
+};
+
+const checkQueryExist = (url, key) => {
+  const searchParams = url.includes('?') 
+    ? new URLSearchParams(url.split('?')[1])
+    : new URLSearchParams('');
+  return searchParams.has(key);
 };
 
 async function parseBareImport(code) {
@@ -39,8 +45,11 @@ async function parseBareImport(code) {
 
   parseResult[0].forEach((item) => {
     // import xx from 'xx' -> import xx from '/@module/xx'
+    // for css file, use '?import' to differentiate import statement and link tag
     if (item.n && item.n[0] !== "." && item.n[0] !== "/") {
       s.overwrite(item.s, item.e, `/@module/${item.n}`);
+    } else {
+      s.overwrite(item.s, item.e, `${item.n}?import`);
     }
   });
 
@@ -67,22 +76,12 @@ app.use(async function (req, res) {
     // script.jsx
     // script.js.php
     if (/\.js\??[^.]*$/.test(req.url)) {
-      let js = fs.readFileSync(
-        path.join(__dirname, removeQuery(req.url)),
-        "utf-8"
-      );
-      await init;
-      let parseResult = parseEsModule(js);
-      let s = new MagicString(js);
+      let js = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
+      const jsCode = await parseBareImport(js);
 
-      parseResult[0].forEach((item) => {
-        if (item.n && item.n[0] !== "." && item.n[0] !== "/") {
-          s.overwrite(item.s, item.e, `/@module/${item.n}`);
-        }
-      });
       res.setHeader("Content-Type", "application/javascript");
       res.statusCode = 200;
-      res.end(s.toString());
+      res.end(jsCode);
       return;
     }
 
@@ -110,6 +109,31 @@ app.use(async function (req, res) {
       res.end(js);
       return;
     }
+
+    if (/\.css\??[^.]*$/.test(req.url)) {
+      let cssContent = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
+      let cssRes;
+      if (checkQueryExist(req.url, "import")) {
+        // import style.css -> return js response
+        cssRes = `
+          const insertStyle = (css) => {
+            let el = document.createElement('style')
+            el.setAttribute('type', 'text/css')
+            el.innerHTML = css
+            document.head.appendChild(el)
+          }
+          insertStyle(\`${cssContent}\`)
+          export default insertStyle
+        `;
+        res.setHeader("Content-Type", "application/javascript");
+      } else {
+        // link css file
+        res.setHeader("Content-Type", "text/css");
+      }
+      res.statusCode = 200;
+      res.end(cssRes);
+      return;
+    }  
 
     if (/\.vue\??[^.]*$/.test(req.url)) {
       let vue = fs.readFileSync(
@@ -174,4 +198,6 @@ app.use(async function (req, res) {
   }
 });
 
-http.createServer(app).listen(3000);
+http.createServer(app).listen(3000, () => {
+  console.log('Server is running on http://localhost:3000');
+});
