@@ -6,48 +6,25 @@ import connect from 'connect';
 import MagicString from 'magic-string';
 import { init, parse as parseEsModule } from 'es-module-lexer';
 import { buildSync } from 'esbuild';
+import serveStatic from 'serve-static';
 import {
   parse as parseVue,
   compileScript,
   compileTemplate,
   rewriteDefault,
 } from '@vue/compiler-sfc';
+import {
+  removeQuery,
+  getQuery,
+  checkQueryExist,
+  cssToJsResponse,
+  isStaticAsset,
+} from './utils.js';
 
 const app = connect();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const removeQuery = (url) => {
-  return url.split("?")[0];
-};
-
-const getQuery = (url, key) => {
-  const searchParams = url.includes('?') 
-    ? new URLSearchParams(url.split('?')[1])
-    : new URLSearchParams('');
-  return searchParams.get(key);
-};
-
-const checkQueryExist = (url, key) => {
-  const searchParams = url.includes('?') 
-    ? new URLSearchParams(url.split('?')[1])
-    : new URLSearchParams('');
-  return searchParams.has(key);
-};
-
-const cssToJsResponse = (css) => {
-  return `
-    const insertStyle = (css) => {
-      let el = document.createElement('style')
-      el.setAttribute('type', 'text/css')
-      el.innerHTML = css
-      document.head.appendChild(el)
-    }
-    insertStyle(\`${css}\`)
-    export default insertStyle
-  `;
-};
 
 async function parseBareImport(code) {
   // https://github.com/guybedford/es-module-lexer
@@ -68,6 +45,9 @@ async function parseBareImport(code) {
 
   return s.toString();
 }
+
+// public dir as static files
+app.use(serveStatic(path.join(__dirname, "public")));
 
 app.use(async function (req, res) {
   try {
@@ -195,6 +175,14 @@ app.use(async function (req, res) {
       res.setHeader("Content-Type", "application/javascript");
       res.statusCode = 200;
       res.end(code);
+      return;
+    }
+
+    // import static file -> response js export only static file url
+    if (isStaticAsset(req.url) && checkQueryExist(req.url, "import")) {
+      res.setHeader("Content-Type", "application/javascript");
+      res.statusCode = 200;
+      res.end(`export default ${JSON.stringify(removeQuery(req.url))}`);
       return;
     }
 
