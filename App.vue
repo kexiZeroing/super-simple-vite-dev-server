@@ -1,6 +1,7 @@
 <template>
-  <div class="red">
-    Hello {{ text }}
+  <div>
+    <span class="bold">Hello</span>
+    <span class="red">Vite and Vue</span>
   </div>
 </template>
 
@@ -17,6 +18,8 @@ export default {
 }
 </script>
 
-<style scoped>
-
+<style>
+.bold {
+  font-weight: bold;
+}
 </style>

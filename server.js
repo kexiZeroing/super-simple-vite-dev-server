@@ -36,6 +36,19 @@ const checkQueryExist = (url, key) => {
   return searchParams.has(key);
 };
 
+const cssToJsResponse = (css) => {
+  return `
+    const insertStyle = (css) => {
+      let el = document.createElement('style')
+      el.setAttribute('type', 'text/css')
+      el.innerHTML = css
+      document.head.appendChild(el)
+    }
+    insertStyle(\`${css}\`)
+    export default insertStyle
+  `;
+};
+
 async function parseBareImport(code) {
   // https://github.com/guybedford/es-module-lexer
   await init;
@@ -88,10 +101,7 @@ app.use(async function (req, res) {
     if (/^\/@module\//.test(req.url)) {
       let pkg = req.url.slice(9);
       let pkgJson = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "node_modules", pkg, "package.json"),
-          "utf8"
-        )
+        fs.readFileSync(path.join(__dirname, "node_modules", pkg, "package.json"), "utf8")
       );
       let entry = pkgJson.module || pkgJson.main;
       let outfile = path.join(__dirname, `esbuild/${pkg}.js`);
@@ -115,19 +125,10 @@ app.use(async function (req, res) {
       let cssRes;
       if (checkQueryExist(req.url, "import")) {
         // import style.css -> return js response
-        cssRes = `
-          const insertStyle = (css) => {
-            let el = document.createElement('style')
-            el.setAttribute('type', 'text/css')
-            el.innerHTML = css
-            document.head.appendChild(el)
-          }
-          insertStyle(\`${cssContent}\`)
-          export default insertStyle
-        `;
+        cssRes = cssToJsResponse(cssContent);
         res.setHeader("Content-Type", "application/javascript");
       } else {
-        // link css file
+        // css link file
         res.setHeader("Content-Type", "text/css");
       }
       res.statusCode = 200;
@@ -136,10 +137,7 @@ app.use(async function (req, res) {
     }  
 
     if (/\.vue\??[^.]*$/.test(req.url)) {
-      let vue = fs.readFileSync(
-        path.join(__dirname, removeQuery(req.url)),
-        "utf-8"
-      );
+      let vue = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
       let { descriptor } = parseVue(vue);
 
       let code = "";
@@ -151,6 +149,17 @@ app.use(async function (req, res) {
         }).code;
 
         code = await parseBareImport(code);
+        res.setHeader("Content-Type", "application/javascript");
+        res.statusCode = 200;
+        res.end(code);
+        return;
+      }
+
+      if (getQuery(req.url, "type") === "style") {
+        let index = getQuery(req.url, "index");
+        let styleContent = descriptor.styles[index].content;
+        code = cssToJsResponse(styleContent);
+
         res.setHeader("Content-Type", "application/javascript");
         res.statusCode = 200;
         res.end(code);
