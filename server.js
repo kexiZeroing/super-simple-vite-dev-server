@@ -34,6 +34,7 @@ async function parseBareImport(code) {
   const s = new MagicString(code);
 
   parseResult[0].forEach((item) => {
+    // Key point: relative module specifiers must start with ./, ../, or /
     // import xx from 'xx' -> import xx from '/@module/xx'
     // for css file, use '?import' to differentiate import statement and link tag
     if (item.n && item.n[0] !== "." && item.n[0] !== "/") {
@@ -51,14 +52,6 @@ app.use(serveStatic(path.join(__dirname, "public")));
 
 app.use(async function (req, res) {
   try {
-    if (req.url === "/") {
-      let html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
-      res.setHeader("Content-Type", "text/html");
-      res.statusCode = 200;
-      res.end(html);
-      return;
-    }
-
     if (/\.js(\?|$)(?!x)/.test(req.url)) {
       let js = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
       const jsCode = await parseBareImport(js);
@@ -125,7 +118,6 @@ app.use(async function (req, res) {
     if (/\.vue\??[^.]*$/.test(req.url)) {
       let vue = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
       let { descriptor } = parseVue(vue);
-
       let code = "";
 
       if (getQuery(req.url, "type") === "template") {
@@ -158,7 +150,11 @@ app.use(async function (req, res) {
 
       if (script) {
         const bareJs = await parseBareImport(script.content);
-        code += rewriteDefault(bareJs, "__script");
+        /**
+         * Rewrite `export default` in a script block into a variable
+         * declaration so that we can inject things into it.
+         */
+        code += rewriteDefault(bareJs, "__sfc__");
       }
 
       if (descriptor.template) {
@@ -166,7 +162,7 @@ app.use(async function (req, res) {
         code += `\nimport { render as __render } from ${JSON.stringify(
           templateRequest
         )}`;
-        code += `\n__script.render = __render`;
+        code += `\n__sfc__.render = __render`;
       }
 
       if (descriptor.styles) {
@@ -176,7 +172,7 @@ app.use(async function (req, res) {
         });
       }
 
-      code += `\nexport default __script`;
+      code += `\nexport default __sfc__`;
 
       res.setHeader("Content-Type", "application/javascript");
       res.statusCode = 200;
