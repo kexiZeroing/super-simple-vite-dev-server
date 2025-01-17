@@ -1,11 +1,11 @@
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from 'node:url';
 import connect from 'connect';
 import MagicString from 'magic-string';
 import { init, parse as parseEsModule } from 'es-module-lexer';
-import { buildSync } from 'esbuild';
+import { buildSync, transformSync } from 'esbuild';
 import serveStatic from 'serve-static';
 import {
   parse as parseVue,
@@ -59,18 +59,24 @@ app.use(async function (req, res) {
       return;
     }
 
-    // match URLs like:
-    // script.js
-    // script.js?version=123
-    // script.js?callback=foo
-    //
-    // but would NOT match:
-    // script.js.map
-    // script.jsx
-    // script.js.php
-    if (/\.js\??[^.]*$/.test(req.url)) {
+    if (/\.js(\?|$)(?!x)/.test(req.url)) {
       let js = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
       const jsCode = await parseBareImport(js);
+
+      res.setHeader("Content-Type", "application/javascript");
+      res.statusCode = 200;
+      res.end(jsCode);
+      return;
+    }
+
+    if (/\.jsx(\?|$)/.test(req.url)) {
+      const jsxContent = fs.readFileSync(path.join(__dirname, removeQuery(req.url)), "utf-8");
+      const transformed = transformSync(jsxContent, {
+        loader: "jsx",
+        format: "esm",
+        target: "esnext",
+      });
+      const jsCode = await parseBareImport(transformed.code);
 
       res.setHeader("Content-Type", "application/javascript");
       res.statusCode = 200;
