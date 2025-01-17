@@ -153,15 +153,19 @@ app.use(async function (req, res) {
         /**
          * Rewrite `export default` in a script block into a variable
          * declaration so that we can inject things into it.
+         * 
+         * e.g.
+         * const __sfc__ = {
+         *   name: 'App',
+         *   setup() { ... }
+         * }
          */
         code += rewriteDefault(bareJs, "__sfc__");
       }
 
       if (descriptor.template) {
         let templateRequest = removeQuery(req.url) + `?type=template`;
-        code += `\nimport { render as __render } from ${JSON.stringify(
-          templateRequest
-        )}`;
+        code += `\nimport { render as __render } from ${JSON.stringify(templateRequest)}`;
         code += `\n__sfc__.render = __render`;
       }
 
